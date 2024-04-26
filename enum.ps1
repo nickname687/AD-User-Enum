@@ -1,22 +1,21 @@
-# PowerShell script to list "Local Group Memberships" and "Global Group Memberships" for all domain users
-
 # Get the list of all domain users
 $rawUsers = net user /domain
-# Preprocess to extract just the user names, skipping the header/footer
-$usersList = $rawUsers -split "`n" | Where-Object {$_ -and $_ -notmatch "The command completed successfully"} | Select-Object -Skip 4 | Out-String
-$userNames = $usersList -split " " | Where-Object { $_ -match "\w" }
+# Preprocess to extract just the user names, handling pagination and skipping headers/footers
+$usersList = $rawUsers -replace '.*--.*' -replace '\s+', "`n" | Where-Object { $_ -and $_ -notmatch "The command completed successfully|User accounts for|\b---" }
 
 # Prepare an array to hold the results
 $results = @()
 
-foreach ($userName in $userNames) {
+foreach ($userName in $usersList) {
     try {
+        # Trimming username in case of extra spaces
+        $userName = $userName.Trim()
         # Getting user details
-        $userDetails = net user $userName /domain
+        $userDetails = net user $userName /domain | Out-String
 
         # Filtering for specific lines
-        $localGroup = $userDetails | Where-Object { $_ -match "Local Group Memberships" }
-        $globalGroup = $userDetails | Where-Object { $_ -match "Global Group Memberships" }
+        $localGroup = $userDetails -split "`n" | Where-Object { $_ -match "Local Group Memberships" }
+        $globalGroup = $userDetails -split "`n" | Where-Object { $_ -match "Global Group Memberships" }
 
         # Avoid adding empty or malformed entries
         if ($localGroup -and $globalGroup) {
@@ -27,6 +26,7 @@ foreach ($userName in $userNames) {
         }
     } catch {
         # Optionally log error or handle specific cases
+        Write-Output "Failed to process user $userName"
     }
 }
 
