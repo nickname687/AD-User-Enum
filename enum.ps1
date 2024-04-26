@@ -1,14 +1,20 @@
-# Get the list of all domain users
-$rawUsers = net user /domain
-# Preprocess to extract just the user names, handling pagination and skipping headers/footers
-$usersList = $rawUsers -replace '.*--.*' -replace '\s+', "`n" | Where-Object { $_ -and $_ -notmatch "The command completed successfully|User accounts for|\b---" }
+# Capture the output of 'net user /domain'
+$output = net user /domain
+
+# Parse usernames from the output
+$usersList = $output -split "`n" | Where-Object {
+    $_ -match '\S' -and $_ -notmatch "The command completed successfully|User accounts for|--More--|The syntax of this command is"
+}
+
+# Trim and extract usernames into an array
+$userNames = $usersList -replace "---", "" -replace "The request will be processed at a domain controller for domain .*", "" -split '\s+' | Where-Object { $_ }
 
 # Prepare an array to hold the results
 $results = @()
 
-foreach ($userName in $usersList) {
+foreach ($userName in $userNames) {
     try {
-        # Trimming username in case of extra spaces
+        # Trim any extra whitespace from the username
         $userName = $userName.Trim()
         # Getting user details
         $userDetails = net user $userName /domain | Out-String
@@ -25,12 +31,9 @@ foreach ($userName in $usersList) {
             $results += $resultString
         }
     } catch {
-        # Optionally log error or handle specific cases
         Write-Output "Failed to process user $userName"
     }
 }
 
 # Output the results
-foreach ($result in $results) {
-    Write-Output $result
-}
+$results | ForEach-Object { Write-Output $_ }
